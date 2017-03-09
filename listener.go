@@ -2,6 +2,7 @@ package maybe_tls
 
 import (
 	"crypto/tls"
+	"io"
 	"net"
 )
 
@@ -16,16 +17,22 @@ type Listener struct {
 
 // Accept waits for and returns the next connection to the listener.
 func (s *Listener) Accept() (c net.Conn, err error) {
-	c, err = s.Listener.Accept()
-	if err != nil {
-		return
-	}
-	b := make([]byte, 6)
-	var n int
-	n, err = c.Read(b)
-	c = Conn{c, &StreamReplay{b[:n], err}}
-	if err == nil && isTLS(b[:n]) {
-		c = tls.Server(c, s.Config)
+	for {
+		c, err = s.Listener.Accept()
+		if err != nil {
+			return
+		}
+		b := make([]byte, 6)
+		var n int
+		n, err = c.Read(b)
+		c = Conn{c, &StreamReplay{b[:n], err}}
+		if err == nil && isTLS(b[:n]) {
+			c = tls.Server(c, s.Config)
+		} else if err == io.EOF {
+			c.Close()
+			continue
+		}
+		break
 	}
 	return
 }
